@@ -1,1 +1,25 @@
-{"name":"DISPO SP Leyment","short_name":"DISPO Leyment","start_url":"./index.html","display":"standalone","background_color":"#f2f5f3","theme_color":"#164e40","lang":"fr"}
+
+{
+  "name": "DISPO SP Leyment",
+  "short_name": "DISPO Leyment",
+  "description": "Gestion des disponibilités des sapeurs-pompiers de Leyment",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f5f3",
+  "theme_color": "#b5121b",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
