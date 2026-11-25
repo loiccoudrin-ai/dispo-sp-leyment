@@ -4,8 +4,9 @@
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="DISPO Leyment">
-<title>DISPO SP Leyment V6</title><style>*{box-sizing:border-box}body{margin:0;background:#f2f5f3;color:#18352d;font:15px system-ui,Arial}header{background:#b91c1c;color:white;padding:20px}main{max-width:980px;margin:auto;padding:15px}.card{background:white;border-radius:14px;padding:17px;margin:12px 0;box-shadow:0 2px 12px #1232}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.between{justify-content:space-between}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.muted{color:#63746b;font-size:13px}button,input,select,textarea{font:inherit;border-radius:8px;padding:10px;border:1px solid #cad6d0;max-width:100%}button{cursor:pointer;background:#e1eae5;color:#164e40}button.primary,.selected{background:#16634f;color:white}button.red{background:#a22e36;color:white}button:disabled{opacity:.5}input,textarea{width:100%;background:white}label{display:block;margin-top:9px;font-size:13px}.tabs{display:flex;gap:6px;overflow:auto}.tabs button{white-space:nowrap}h1{margin:0;font-size:24px}h2{font-size:20px}.pill{display:inline-block;border-radius:20px;padding:4px 9px;background:#e5f2e9}.warning{background:#fff0d8;padding:10px;border-radius:8px}.error{background:#ffe4e4;padding:10px;border-radius:8px}.item{padding:10px;border-bottom:1px solid #e7eee9}.item:last-child{border:0}#message{position:fixed;bottom:10px;left:10px;right:10px;max-width:650px;margin:auto;display:none;padding:12px;border-radius:10px;background:#123e32;color:white}small{font-size:12px}</style></head><body><header><h1>🚒 DISPO SP Leyment</h1><small>V6 • Planning, notifications et manœuvres</small></header><main id="app"></main><div id="message" role="status"></div><script type="module">
+<title>DISPO SP Leyment V6.2</title><style>*{box-sizing:border-box}body{margin:0;background:#f2f5f3;color:#18352d;font:15px system-ui,Arial}header{background:#b91c1c;color:white;padding:20px}main{max-width:980px;margin:auto;padding:15px}.card{background:white;border-radius:14px;padding:17px;margin:12px 0;box-shadow:0 2px 12px #1232}.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.between{justify-content:space-between}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.muted{color:#63746b;font-size:13px}button,input,select,textarea{font:inherit;border-radius:8px;padding:10px;border:1px solid #cad6d0;max-width:100%}button{cursor:pointer;background:#e1eae5;color:#164e40}button.primary,.selected{background:#16634f;color:white}button.red{background:#a22e36;color:white}button:disabled{opacity:.5}input,textarea{width:100%;background:white}label{display:block;margin-top:9px;font-size:13px}.tabs{display:flex;gap:6px;overflow:auto}.tabs button{white-space:nowrap}h1{margin:0;font-size:24px}h2{font-size:20px}.pill{display:inline-block;border-radius:20px;padding:4px 9px;background:#e5f2e9}.warning{background:#fff0d8;padding:10px;border-radius:8px}.error{background:#ffe4e4;padding:10px;border-radius:8px}.item{padding:10px;border-bottom:1px solid #e7eee9}.item:last-child{border:0}#message{position:fixed;bottom:10px;left:10px;right:10px;max-width:650px;margin:auto;display:none;padding:12px;border-radius:10px;background:#123e32;color:white}small{font-size:12px}</style></head><body><header><h1>🚒 DISPO SP Leyment</h1><small>V6.2 • Planning, notifications et événements</small></header><main id="app"></main><div id="message" role="status"></div><script type="module">
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const app=document.getElementById("app");
 const $=s=>document.querySelector(s), escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const conf=window.localStorage.getItem('leyment-config');let cfg=conf?JSON.parse(conf):null,db=null,me=null,profiles=[],tab='planning',weekOffset=0,seenNotice=null;
 const toast=s=>{const m=$('#message');m.textContent=s;m.style.display='block';
@@ -14,11 +15,13 @@ clearTimeout(window.toastTimer);
 window.toastTimer=setTimeout(()=>m.style.display='none',15000);
 };
 
-const monday=(offset=0)=>{let d=new Date(),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+7*offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const parisDate=()=>{const p=new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>p.find(x=>x.type===t).value;return `${get('year')}-${get('month')}-${get('day')}`};
+const monday=(offset=0)=>{let d=new Date(parisDate()+'T12:00:00'),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+7*offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const dateFr=s=>new Date(s+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
 const name=id=>{let p=profiles.find(x=>x.id===id);return p?escape(p.first_name+' '+p.last_name):'Poste vacant'};
 const run=async(fn)=>{try{await fn();await render()}catch(e){toast(e.message||'Erreur')}};
 const query=async(q)=>{const {data,error}=await q;if(error)throw error;return data};
+async function allRows(build){const out=[];for(let i=0;;i+=500){const page=await query(build().range(i,i+499));out.push(...page);if(page.length<500)return out;}}
 function configView(){app.innerHTML=`<div class="card"><h2>Connexion au serveur</h2><p>Renseigner les informations publiques de votre projet Supabase. La clé « service_role » ne doit jamais être saisie ici.</p><label>URL Supabase</label><input id="url" placeholder="https://xxxx.supabase.co" value="${escape(cfg?.url||'')}"><label>Clé publique anon / publishable</label><input id="key" placeholder="sb_publishable_..." value="${escape(cfg?.key||'')}"><p><button class="primary" id="save">Enregistrer</button></p><p class="muted">Le schéma SQL et les étapes de déploiement sont dans le fichier README.</p></div>`;$('#save').onclick=()=>{const url=$('#url').value.trim(),key=$('#key').value.trim();if(!/^https:\/\//.test(url)||!key)return toast('URL HTTPS et clé publique requises');localStorage.setItem('leyment-config',JSON.stringify({url,key}));location.reload()}}
 async function init(){if(!cfg){configView();return}
 const isRecovery =
@@ -38,19 +41,31 @@ if(isRecovery){
   return;
 }
 const {data:{session}}=await db.auth.getSession();if(!session){authView();return}me=(await query(db.from('profiles').select('*').eq('id',session.user.id))).at(0);if(!me?.active){app.innerHTML=`<div class="card"><h2>Compte en attente d'activation</h2><p>Un administrateur doit activer ce compte.</p><button id="logout">Se déconnecter</button></div>`;$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());return}await render();
+
 setInterval(async()=>{
   try{
     await updateNoticeCount();
     await alerts();
+
     if(tab==='notifications'){
       await notifications();
     }
   }catch(e){
     console.error(e);
   }
-},45000)
+
+  try{
+    if(tab==='planning' &&
+       document.activeElement?.id!=='pauseDuration'){
+      await planning();
+    }
+  }catch(e){
+    console.error(e);
+  }
+},45000);
+
 }
-function authView(){app.innerHTML=`<div class="card"><h2>Connexion</h2><label>Adresse e-mail</label><input id="email" type="email"><label>Mot de passe</label><input id="password" type="password"><div class="row" style="margin-top:12px"><button class="primary" id="login">Connexion</button><button id="register">Créer un compte</button><button id="forgot">Mot de passe oublié ?</button></div><div id="registerFields" style="display:none"><label>Prénom</label><input id="first"><label>Nom</label><input id="last"><label>Téléphone</label><input id="phone" type="tel"><button id="submitRegister" class="primary">Demander un accès</button></div><p class="muted">L'administrateur doit activer les nouveaux comptes. Les coordonnées ne sont pas publiques.</p></div>`;$('#login').onclick=()=>run(async()=>{await query(db.auth.signInWithPassword({email:$('#email').value,password:$('#password').value}));location.reload()});
+function authView(){app.innerHTML=`<div class="card"><h2>Connexion</h2><label>Adresse e-mail</label><input id="email" type="email" autocomplete="username"><label>Mot de passe</label><input id="password" type="password" autocomplete="current-password"><div class="row" style="margin-top:12px"><button class="primary" id="login">Connexion</button><button id="forgot">Mot de passe oublié ?</button></div><p class="muted">Pour obtenir un compte, contactez un administrateur.</p></div>`;$('#login').onclick=async()=>{try{await query(db.auth.signInWithPassword({email:$('#email').value.trim(),password:$('#password').value}));location.reload()}catch(e){toast(e.message||'Connexion impossible')}};
 $('#forgot').onclick=async()=>{
   const email=$('#email').value.trim();
   if(!email)return toast('Renseignez votre adresse e-mail');
@@ -63,7 +78,7 @@ $('#forgot').onclick=async()=>{
     toast(e.message||'Erreur de réinitialisation');
   }
 };
-$('#register').onclick=()=>$('#registerFields').style.display='block';$('#submitRegister').onclick=()=>run(async()=>{await query(db.auth.signUp({email:$('#email').value,password:$('#password').value,options:{data:{first_name:$('#first').value,last_name:$('#last').value,phone:$('#phone').value}}}));toast('Inscription envoyée : vérifiez votre e-mail, puis attendez l’activation')})}
+}
 
 function recoveryView(){
   app.innerHTML=`
@@ -101,88 +116,214 @@ function recoveryView(){
 }
 
 
+
 async function notifications(){
-  const notices=await query(
-    db.from('notices').select('*')
-      .order('created_at',{ascending:false})
+
+  const notices = await allRows(()=>
+    db.from('notices')
+      .select('*')
+      .order('created_at',{ascending:false}).order('id')
   );
 
-  const acknowledgements=await query(
+  const acknowledgements = await allRows(()=>
     db.from('notice_acknowledgements')
-      .select('notice_id').eq('user_id',me.id)
+      .select('notice_id,dismissed_at')
+      .eq('user_id',me.id).order('notice_id')
   );
 
-  const acknowledged=new Set(
+  const acknowledged = new Set(
     acknowledgements.map(a=>a.notice_id)
   );
 
-  const unread=notices.filter(
+  const dismissed = new Set(
+    acknowledgements
+      .filter(a=>a.dismissed_at)
+      .map(a=>a.notice_id)
+  );
+
+  const visible = notices.filter(
+    n=>!dismissed.has(n.id)
+  );
+
+  const unread = visible.filter(
     n=>!acknowledged.has(n.id)
   );
 
-  $('#content').innerHTML=`
+  const read = visible.filter(
+    n=>acknowledged.has(n.id)
+  );
+
+  if(tab!=='notifications') return;
+
+  $('#content').innerHTML = `
+
     <div class="card">
+
       <h2>🔔 Mes notifications</h2>
-      <p>${unread.length} notification(s) non acquittée(s)</p>
-      <button class="primary" id="ackAll"
-        ${unread.length?'':'disabled'}>
-        Tout acquitter
-      </button>
-      ${notices.length?notices.map(n=>`
-        <div class="item">
-          <strong>${escape(n.title)}</strong>
-          <p>${escape(n.body)}</p>
-          <p class="muted">
-            ${new Date(n.created_at).toLocaleString('fr-FR')}
-          </p>
-          ${acknowledged.has(n.id)
-            ?'<span class="pill">✓ Acquittée</span>'
-            :`<button class="primary" data-ack="${n.id}">
-                Acquitter
-              </button>`}
-        </div>
-      `).join(''):'<p>Aucune notification.</p>'}
+<button id="enableNotifications">Autoriser les notifications système</button>
+<p class="muted">Alertes uniquement lorsque l’application est ouverte.</p>
+
+      <p>
+        ${unread.length} notification(s) non lue(s)
+      </p>
+
+      <div class="row"
+        style="flex-wrap:wrap;gap:8px">
+
+        <button class="primary"
+          id="ackAll"
+          ${unread.length?'':'disabled'}>
+          Tout acquitter
+        </button>
+
+        <button class="red"
+          id="dismissAll"
+          ${read.length?'':'disabled'}>
+          🗑 Effacer les notifications lues
+        </button>
+
+      </div>
+
+      ${visible.length
+        ? visible.map(n=>`
+
+          <div class="item"
+            style="
+              border-left:4px solid
+              ${acknowledged.has(n.id)
+                ?'#64748b'
+                :'#b7791f'};
+              padding-left:10px;
+            ">
+
+            <strong>
+              ${escape(n.title)}
+            </strong>
+
+            <p>${escape(n.body)}</p>
+
+            <p class="muted">
+              ${new Date(
+                n.created_at
+              ).toLocaleString('fr-FR',{
+                timeZone:'Europe/Paris'
+              })}
+            </p>
+
+            ${acknowledged.has(n.id)
+
+              ? `<div class="row between">
+
+                  <span class="pill">
+                    ✓ Acquittée
+                  </span>
+
+                  <button class="red"
+                    data-dismiss="${n.id}">
+                    🗑 Effacer
+                  </button>
+
+                 </div>`
+
+              : `<button class="primary"
+                   data-ack="${n.id}">
+                   Acquitter
+                 </button>`
+            }
+
+          </div>
+
+        `).join('')
+
+        : '<p>Aucune notification.</p>'
+      }
+
     </div>`;
 
   async function acknowledge(ids){
-    try{
-      if(!ids.length)return;
+
+    if(!ids.length) return;
+
+    run(async()=>{
+
       await query(
-        db.from('notice_acknowledgements').upsert(
-          ids.map(id=>({
-            notice_id:id,
-            user_id:me.id
-          })),
-          {
-            onConflict:'notice_id,user_id',
-            ignoreDuplicates:true
-          }
-        )
+        db.from('notice_acknowledgements')
+          .upsert(
+            ids.map(id=>({
+              notice_id:id,
+              user_id:me.id
+            })),
+            {
+              onConflict:'notice_id,user_id',
+              ignoreDuplicates:true
+            }
+          )
       );
-      await render();
-    }catch(e){
-      toast(e.message||'Erreur d’acquittement');
-    }
+
+      toast('Notification(s) acquittée(s)');
+
+    });
+  }
+
+  async function dismiss(id=null){
+
+    const message = id
+
+      ? 'Effacer cette notification lue ?'
+
+      : 'Effacer toutes vos notifications lues ?';
+
+    if(!confirm(message)) return;
+
+    run(async()=>{
+
+      const count = await query(
+        db.rpc('dismiss_read_notices',{
+          target_notice:id
+        })
+      );
+
+      toast(
+        count+' notification(s) effacée(s)'
+      );
+
+    });
   }
 
   document.querySelectorAll('[data-ack]')
-    .forEach(b=>b.onclick=()=>
-      acknowledge([b.dataset.ack])
-    );
+    .forEach(b=>{
 
+      b.onclick=()=>
+        acknowledge([b.dataset.ack]);
+
+    });
+
+  document.querySelectorAll('[data-dismiss]')
+    .forEach(b=>{
+
+      b.onclick=()=>
+        dismiss(b.dataset.dismiss);
+
+    });
+
+  $('#enableNotifications').onclick=async()=>{try{if(!('Notification' in window))return toast('Notifications système indisponibles');toast('Autorisation : '+await Notification.requestPermission())}catch(e){toast('Notifications système indisponibles')}};
   $('#ackAll').onclick=()=>
     acknowledge(unread.map(n=>n.id));
+
+  $('#dismissAll').onclick=()=>
+    dismiss();
+
 }
 
 
 async function updateNoticeCount(){
-  const notices=await query(
-    db.from('notices').select('id')
+  const notices=await allRows(()=>
+    db.from('notices').select('id').order('id')
   );
 
-  const acknowledgements=await query(
+  const acknowledgements=await allRows(()=>
     db.from('notice_acknowledgements')
-      .select('notice_id').eq('user_id',me.id)
+      .select('notice_id').eq('user_id',me.id).order('notice_id')
   );
 
   const acknowledged=new Set(
@@ -229,7 +370,9 @@ async function alerts(){
 
   if(rows.length)seenNotice=rows[0].id;
 }
-async function render(){profiles=await query(db.from('profiles').select('*').order('last_name'));const tabs=[['planning','Planning'],['availability','Mes disponibilités'],['replacement','Remplacements'],['drills','Manœuvres'],['admin','Administration']].filter(x=>x[0]!=='admin'||me.is_admin);app.innerHTML=`<div class="card row between"><div><strong>${escape(me.first_name+' '+me.last_name)}</strong><div class="muted">${me.is_admin?'Administrateur':'Sapeur-pompier'}</div></div><div class="row"><button id="notify">🔔 Notifications</button><button id="logout">Déconnexion</button></div></div><nav class="tabs">${tabs.map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'selected':''}">${label}</button>`).join('')}</nav><section id="content"></section><p class="muted">Application d'organisation interne : ne remplace pas l'alerte officielle du SDIS.</p>`;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());$('#notify').onclick=async()=>{if(!('Notification'in window))return toast('Notifications non disponibles dans ce navigateur');toast('Autorisation : '+await Notification.requestPermission()+' — uniquement lorsque l’application est ouverte')};if(tab==='planning')await planning();if(tab==='availability')await availability();if(tab==='replacement')await replacements();if(tab==='drills')await drills();if(tab==='admin')await admin();
+async function render(){profiles=await query(db.from('profiles').select('*').order('last_name'));const tabs=[['planning','Planning'],['availability','Mes disponibilités'],['replacement','Remplacements'],
+['drills','Manœuvres et cérémonies']
+,['admin','Administration']].filter(x=>x[0]!=='admin'||me.is_admin);app.innerHTML=`<div class="card row between"><div><strong>${escape(me.first_name+' '+me.last_name)}</strong><div class="muted">${me.is_admin?'Administrateur':'Sapeur-pompier'}</div></div><div class="row"><button id="notify">🔔 Notifications</button><button id="logout">Déconnexion</button></div></div><nav class="tabs">${tabs.map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'selected':''}">${label}</button>`).join('')}</nav><section id="content"></section><p class="muted">Application d'organisation interne : ne remplace pas l'alerte officielle du SDIS.</p>`;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());if(tab==='planning')await planning();if(tab==='availability')await availability();if(tab==='replacement')await replacements();if(tab==='drills')await drills();if(tab==='admin')await admin();
 $('#notify').onclick=()=>{
   tab='notifications';
   render().catch(e=>toast(e.message));
@@ -238,9 +381,921 @@ if(tab==='notifications')await notifications();
 await updateNoticeCount();
 
 await alerts()}
-async function planning(){const w=monday(weekOffset),rows=await query(db.from('assignments').select('*').eq('week_start',w).order('slot'));$('#content').innerHTML=`<div class="card"><div class="row between"><h2>Semaine du ${dateFr(w)}</h2><div><button id="prev">◀</button><button id="next">▶</button></div></div>${['nights','weekend'].map(slot=>{let a=rows.filter(r=>r.slot===slot);return `<div class="card"><h3>${slot==='nights'?'🌙 Nuits de semaine':'☀️ Week-end'}</h3><p class="muted">${slot==='nights'?'Lundi 19 h – samedi 7 h':'Samedi 7 h – lundi 7 h'}</p>${a.length?a.map(r=>`<div class="item row between"><span>${r.user_id?name(r.user_id):'<strong>⚠ Poste vacant</strong>'}</span>${r.user_id===me.id?`<button class="red" data-decline="${r.id}">Indisponible</button>`:''}</div>`).join(''):'<p class="warning">Planning non publié</p>'}</div>`}).join('')}</div>`;$('#prev').onclick=()=>{weekOffset--;render()};$('#next').onclick=()=>{weekOffset++;render()};document.querySelectorAll('[data-decline]').forEach(b=>b.onclick=()=>{if(confirm('Demander votre remplacement pour toute cette période ?'))run(async()=>{await query(db.rpc('decline_assignment',{aid:b.dataset.decline}));toast('Demande de remplacement créée')})})}
-async function availability(){const w=monday(weekOffset),rows=await query(db.from('availability').select('*').eq('week_start',w).eq('user_id',me.id));$('#content').innerHTML=`<div class="card"><div class="row between"><h2>Mes disponibilités • ${dateFr(w)}</h2><div><button id="prev">◀</button><button id="next">▶</button></div></div><p class="muted">Déclarez-vous disponible avant le jeudi à 18 h pour la semaine suivante. « Non renseigné » ne permet pas une affectation automatique.</p>${['nights','weekend'].map(slot=>`<div class="item"><strong>${slot==='nights'?'5 nuits de semaine':'Week-end complet'}</strong><div class="row" style="margin-top:8px">${[['yes','Disponible'],['no','Indisponible'],['unknown','Non renseigné']].map(([v,l])=>`<button data-slot="${slot}" data-value="${v}" class="${(rows.find(r=>r.slot===slot)?.status||'unknown')===v?'selected':''}">${l}</button>`).join('')}</div></div>`).join('')}</div>`;$('#prev').onclick=()=>{weekOffset--;render()};$('#next').onclick=()=>{weekOffset++;render()};document.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.from('availability').upsert({user_id:me.id,week_start:w,slot:b.dataset.slot,status:b.dataset.value,updated_at:new Date().toISOString()}));toast('Disponibilité enregistrée')}))}
-async function replacements(){const rows=await query(db.from('replacements').select('*,assignments(week_start,slot,user_id)').in('status',['open','offered']).order('created_at',{ascending:false}));$('#content').innerHTML=`<div class="card"><h2>Remplacements à pourvoir</h2>${rows.length?rows.map(r=>`<div class="item"><strong>${r.assignments?.slot==='nights'?'Nuits':'Week-end'} • ${dateFr(r.assignments?.week_start)}</strong><p>Demandeur : ${name(r.requester)}</p><p class="muted">${r.status==='offered'?'Volontaire : '+name(r.volunteer):'En attente de volontaire'}</p><div class="row">${r.status==='open'&&r.requester!==me.id?`<button class="primary" data-offer="${r.id}">Je me propose</button>`:''}${me.is_admin&&r.status==='offered'?`<button class="primary" data-approve="${r.id}">Valider</button><button data-reject="${r.id}">Refuser</button>`:''}</div></div>`).join(''):'<p>Aucune demande en cours.</p>'}</div>`;document.querySelectorAll('[data-offer]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('offer_replacement',{rid:b.dataset.offer}));toast('Proposition transmise')}));document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('approve_replacement',{rid:b.dataset.approve,accept:true}));toast('Remplacement validé')}));document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('approve_replacement',{rid:b.dataset.reject,accept:false}));toast('Proposition refusée')}))}
+
+
+async function operationalPanel(){
+
+  const currentDate = await query(
+    db.rpc('current_daily_slot')
+  );
+
+  if(!currentDate){
+
+    return `
+      <div class="card">
+        <h2>Potentiel opérationnel</h2>
+        <p class="muted">
+          Aucun créneau opérationnel en cours.
+        </p>
+      </div>`;
+  }
+
+  const rows = await query(
+    db.rpc('daily_operational_status')
+  );
+
+  if(!rows.length){
+
+    return `
+      <div class="card">
+        <h2>Potentiel opérationnel</h2>
+        <p class="warning">
+          Aucun planning journalier publié
+          pour le créneau en cours.
+        </p>
+      </div>`;
+  }
+
+  const available = rows.filter(
+    r=>r.status==='available'
+  ).length;
+
+  const mine = rows.find(
+    r=>r.user_id===me.id
+  );
+
+  const color = available===2
+    ? '#15803d'
+    : available===1
+      ? '#b7791f'
+      : '#b91c1c';
+
+  const label = available===2
+    ? 'Potentiel complet'
+    : available===1
+      ? 'Potentiel dégradé'
+      : 'Aucun pompier disponible';
+
+  const statuses = {
+    available:'Disponible',
+    unavailable:'Indisponible temporairement',
+    vacant:'Poste vacant',
+    inactive:'Pompier inactif'
+  };
+
+  const people = rows.map(r=>{
+
+    const statusColor =
+      r.status==='available'
+        ? '#15803d'
+        : '#b91c1c';
+
+    const expected = r.expected_end_at
+      ? new Date(
+          r.expected_end_at
+        ).toLocaleString('fr-FR',{
+          timeZone:'Europe/Paris',
+          day:'numeric',
+          month:'short',
+          hour:'2-digit',
+          minute:'2-digit'
+        })
+      : null;
+
+    return `
+      <div class="item">
+
+        <strong>
+          ${r.user_id
+            ? escape(
+                r.first_name+' '+r.last_name
+              )
+            : 'Poste vacant'}
+        </strong>
+
+        <div style="color:${statusColor}">
+          ${r.status==='available'?'🟢':'🔴'}
+          ${statuses[r.status]||'Statut inconnu'}
+        </div>
+
+        ${r.status==='unavailable'
+          ? `<p class="muted">
+              ${expected
+                ? 'Retour estimé : '+expected
+                : 'Durée indéterminée'}
+             </p>`
+          : ''}
+
+      </div>`;
+  }).join('');
+
+  let actions = '';
+
+  if(mine?.status==='available'){
+
+    actions = `
+      <div class="item">
+
+        <strong>
+          Mon indisponibilité temporaire
+        </strong>
+
+        <p class="muted">
+          Sélectionnez une durée estimée.
+        </p>
+
+        <select id="pauseDuration"
+          style="width:100%;margin:8px 0">
+
+          <option value="30">30 minutes</option>
+          <option value="60">1 heure</option>
+          <option value="120">2 heures</option>
+          <option value="240">4 heures</option>
+          <option value="">
+            Durée indéterminée
+          </option>
+
+        </select>
+
+        <button
+          id="pauseAvailability"
+          class="red"
+          style="width:100%">
+          Me rendre indisponible
+        </button>
+
+      </div>`;
+  }
+
+  if(mine?.status==='unavailable'){
+
+    actions = `
+      <div class="item">
+
+        <p class="warning">
+          Vous êtes momentanément indisponible.
+        </p>
+
+        <button
+          id="resumeAvailability"
+          class="primary"
+          style="width:100%">
+          Reprendre ma disponibilité
+        </button>
+
+      </div>`;
+  }
+
+  return `
+    <div class="card"
+      style="border-left:5px solid ${color}">
+
+      <h2>Potentiel opérationnel</h2>
+
+      <p class="muted">
+        Créneau du ${dateFr(currentDate)}
+      </p>
+
+      <div style="
+        text-align:center;
+        padding:15px;
+        color:${color}
+      ">
+
+        <strong style="font-size:42px">
+          ${available}/2
+        </strong>
+
+        <div>
+          <strong>${label}</strong>
+        </div>
+
+      </div>
+
+      ${people}
+
+      ${actions}
+
+      <p class="muted">
+        Actualisation automatique toutes
+        les 45 secondes lorsque
+        l'application est ouverte.
+      </p>
+
+    </div>`;
+}
+
+
+
+
+async function planning(){
+
+  const selectedWeek = weekOffset;
+  const w = monday(selectedWeek);
+
+  const dates = Array.from(
+    {length:7},
+    (_,i)=>{
+
+      const d = new Date(w+'T12:00:00');
+      d.setDate(d.getDate()+i);
+
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+  );
+
+  const rows = await query(
+    db.from('daily_assignments')
+      .select('*')
+      .gte('assignment_date',dates[0])
+      .lte('assignment_date',dates[6])
+      .order('assignment_date')
+      .order('position')
+  );
+
+  let operationalHtml = '';
+
+  try{
+    operationalHtml = await operationalPanel();
+  }catch(e){
+    console.error(e);
+    operationalHtml = `
+      <div class="card">
+        <p class="warning">
+          Statut opérationnel momentanément inaccessible.
+        </p>
+      </div>`;
+  }
+
+  if(tab!=='planning' ||
+     selectedWeek!==weekOffset) return;
+
+  const cards = dates.map((date,i)=>{
+
+    const dayRows = rows.filter(
+      r=>r.assignment_date===date
+    );
+
+    const weekend = i>=5;
+
+    const label = new Date(
+      date+'T12:00:00'
+    ).toLocaleDateString('fr-FR',{
+      weekday:'long',
+      day:'numeric',
+      month:'long'
+    });
+
+    const filled = dayRows.filter(r=>
+      r.user_id &&
+      profiles.some(p=>
+        p.id===r.user_id && p.active
+      )
+    ).length;
+
+    const color = filled===2
+      ? '#15803d'
+      : filled===1
+        ? '#b7791f'
+        : '#b91c1c';
+
+    const positions = [1,2].map(pos=>{
+
+      const r = dayRows.find(
+        x=>x.position===pos
+      );
+
+      const active = r?.user_id &&
+        profiles.some(p=>
+          p.id===r.user_id && p.active
+        );
+
+      return `
+        <div class="item row between">
+
+          <span>
+            ${active
+              ? '👤 '+name(r.user_id)
+              : r?.user_id
+                ? '⚠ '+name(r.user_id)+' — Inactif'
+                : '⚠ Poste vacant'}
+          </span>
+
+          ${active && r.user_id===me.id
+            ? '<span class="pill">Vous</span>'
+            : ''}
+
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="card"
+        style="border-left:4px solid ${dayRows.length?color:'#64748b'}">
+
+        <div class="row between">
+
+          <strong style="text-transform:capitalize">
+            ${weekend?'☀️':'🌙'} ${label}
+          </strong>
+
+          ${dayRows.length
+            ? `<strong style="color:${color}">
+                ${filled}/2
+               </strong>`
+            : ''}
+
+        </div>
+
+        <p class="muted">
+          ${weekend
+            ? '7 h – 7 h le lendemain'
+            : '19 h – 7 h le lendemain'}
+        </p>
+
+        ${dayRows.length
+          ? positions
+          : '<p class="muted">Planning non publié</p>'}
+
+      </div>`;
+  }).join('');
+
+  $('#content').innerHTML = `
+
+    ${operationalHtml}
+
+    <div class="card">
+
+      <div class="row between">
+
+        <h2>Semaine du ${dateFr(w)}</h2>
+
+        <div>
+          <button id="prev">◀</button>
+          <button id="next">▶</button>
+        </div>
+
+      </div>
+
+      <p class="muted">
+        Deux pompiers affectés par créneau.
+        Pour déclarer une indisponibilité,
+        utilisez votre calendrier mensuel.
+      </p>
+
+      ${cards}
+
+    </div>`;
+
+  $('#prev').onclick=()=>{
+    weekOffset--;
+    render();
+  };
+
+  $('#next').onclick=()=>{
+    weekOffset++;
+    render();
+  };
+
+  const pauseButton = $('#pauseAvailability');
+
+  if(pauseButton){
+
+    pauseButton.onclick=()=>{
+
+      if(!confirm(
+        'Confirmer votre indisponibilité temporaire ?'
+      )) return;
+
+      const duration = $('#pauseDuration').value;
+
+      run(async()=>{
+
+        await query(
+          db.rpc('pause_daily_availability',{
+            duration_minutes:
+              duration===''?null:Number(duration)
+          })
+        );
+
+        toast('Indisponibilité temporaire enregistrée');
+
+      });
+    };
+  }
+
+  const resumeButton = $('#resumeAvailability');
+
+  if(resumeButton){
+
+    resumeButton.onclick=()=>{
+
+      run(async()=>{
+
+        await query(
+          db.rpc('resume_daily_availability')
+        );
+
+        toast('Retour en disponibilité enregistré');
+
+      });
+    };
+  }
+}
+
+let availabilityMonthOffset = 0;
+
+async function availability(){
+
+  const selectedMonth = availabilityMonthOffset;
+  const paris = new Intl.DateTimeFormat('fr-FR',{
+    timeZone:'Europe/Paris',
+    year:'numeric',
+    month:'2-digit',
+    day:'2-digit',
+    hour:'2-digit',
+    minute:'2-digit',
+    hourCycle:'h23'
+  }).formatToParts(new Date());
+
+  const part = type =>
+    Number(paris.find(p=>p.type===type).value);
+
+  const today = `${part('year')}-${String(part('month')).padStart(2,'0')}-${String(part('day')).padStart(2,'0')}`;
+
+  const monthDate = new Date(
+    part('year'),
+    part('month')-1+availabilityMonthOffset,
+    1
+  );
+
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+
+  const prefix =
+    `${year}-${String(month+1).padStart(2,'0')}`;
+
+  const days =
+    new Date(year,month+1,0).getDate();
+
+  const offset =
+    (monthDate.getDay()+6)%7;
+
+  const first = `${prefix}-01`;
+
+  const last =
+    `${prefix}-${String(days).padStart(2,'0')}`;
+
+  const rows = await query(
+    db.from('daily_unavailability')
+      .select('unavailable_date')
+      .eq('user_id',me.id)
+      .gte('unavailable_date',first)
+      .lte('unavailable_date',last)
+  );
+
+  const absent = new Set(
+    rows.map(r=>r.unavailable_date)
+  );
+
+  if(tab!=='availability' || selectedMonth!==availabilityMonthOffset) return;
+
+  let cells = '';
+
+  for(let i=0;i<offset;i++){
+    cells += '<div></div>';
+  }
+
+  for(let d=1;d<=days;d++){
+
+    const date =
+      `${prefix}-${String(d).padStart(2,'0')}`;
+
+    const day =
+      new Date(year,month,d).getDay();
+
+    const weekend = day===0 || day===6;
+
+    const startHour = weekend ? 7 : 19;
+
+    const locked =
+      date<today ||
+      (date===today && part('hour')>=startHour);
+
+    const unavailable = absent.has(date);
+
+    const color = locked
+      ? '#64748b'
+      : unavailable
+        ? '#b91c1c'
+        : '#15803d';
+
+    cells += `
+      <button
+        data-calendar-date="${date}"
+        ${locked?'disabled':''}
+        style="
+          background:${color};
+          color:white;
+          border:0;
+          border-radius:8px;
+          min-height:48px;
+          min-width:0;
+          padding:4px;
+          opacity:1;
+        ">
+        <strong>${d}</strong>
+        <div style="font-size:12px">
+          ${locked?'—':unavailable?'✕':'✓'}
+        </div>
+      </button>`;
+  }
+
+  $('#content').innerHTML = `
+    <div class="card">
+
+      <h2>Mes disponibilités</h2>
+
+      <div class="row between">
+        <button id="monthPrev">◀</button>
+
+        <strong style="text-transform:capitalize">
+          ${monthDate.toLocaleDateString('fr-FR',{
+            month:'long',
+            year:'numeric'
+          })}
+        </strong>
+
+        <button id="monthNext">▶</button>
+      </div>
+
+      <p class="muted">
+        Vous êtes disponible par défaut.
+        Cliquez sur une journée pour modifier
+        votre disponibilité.
+      </p>
+
+      <div style="
+        display:grid;
+        grid-template-columns:repeat(7,minmax(0,1fr));
+        gap:4px;
+        text-align:center;
+        margin:15px 0;
+      ">
+
+        ${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
+          .map(d=>`
+            <strong style="font-size:11px">
+              ${d}
+            </strong>
+          `).join('')}
+
+        ${cells}
+
+      </div>
+
+      <div style="font-size:13px;line-height:2">
+        🟢 Disponible<br>
+        🔴 Indisponible<br>
+        ⚪ Créneau passé ou commencé
+      </div>
+
+      <div class="item">
+        <strong>Horaires opérationnels</strong>
+        <p>Lundi au vendredi : 19 h – 7 h</p>
+        <p>Samedi et dimanche : 7 h – 7 h</p>
+      </div>
+
+      <p class="muted">
+        Toute indisponibilité sur une journée
+        déjà attribuée entraîne une recherche
+        automatique de remplaçant.
+      </p>
+
+    </div>`;
+
+  $('#monthPrev').onclick=()=>{
+    availabilityMonthOffset--;
+    render();
+  };
+
+  $('#monthNext').onclick=()=>{
+    availabilityMonthOffset++;
+    render();
+  };
+
+  document.querySelectorAll(
+    '[data-calendar-date]'
+  ).forEach(b=>{
+
+    b.onclick=()=>{
+
+      if(b.disabled) return;
+
+      const date = b.dataset.calendarDate;
+
+      const available = absent.has(date);
+
+      const message = available
+        ? 'Confirmer votre retour en disponibilité ?'
+        : 'Confirmer votre indisponibilité pour cette journée ?';
+
+      if(!confirm(message)) return;
+
+      run(async()=>{
+
+        await query(
+          db.rpc('set_daily_availability',{
+            target_date:date,
+            available:available
+          })
+        );
+
+        toast(
+          available
+            ? 'Disponibilité enregistrée'
+            : 'Indisponibilité enregistrée'
+        );
+
+      });
+    };
+  });
+}
+
+
+
+async function replacements(){
+
+  const rows = await allRows(()=>
+    db.from('daily_replacements')
+      .select('*')
+      .order('created_at',{ascending:false}).order('id')
+  );
+
+  const assignments = await allRows(()=>
+    db.from('daily_assignments')
+      .select('*')
+      .order('assignment_date').order('position')
+  );
+
+  const currentSlot = await query(
+    db.rpc('current_daily_slot')
+  );
+
+  const parisToday = parisDate();
+
+  const vacant = assignments.filter(a=>
+    !a.user_id &&
+    (
+      a.assignment_date>=parisToday ||
+      a.assignment_date===currentSlot
+    )
+  );
+
+  let absences = [];
+
+  if(me.is_admin && vacant.length){
+
+    absences = await query(
+      db.from('daily_unavailability')
+        .select('*')
+        .gte(
+          'unavailable_date',
+          vacant[0].assignment_date
+        )
+        .lte(
+          'unavailable_date',
+          vacant[vacant.length-1].assignment_date
+        )
+    );
+  }
+
+  const history = rows.filter(
+    r=>r.status==='assigned'
+  );
+
+  function candidates(a){
+
+    return profiles.filter(p=>
+
+      p.active &&
+
+      !absences.some(u=>
+        u.user_id===p.id &&
+        u.unavailable_date===a.assignment_date
+      ) &&
+
+      !assignments.some(x=>
+        x.user_id===p.id &&
+        x.assignment_date===a.assignment_date
+      )
+
+    );
+  }
+
+  if(tab!=='replacement') return;
+
+  $('#content').innerHTML = `
+
+    <div class="card">
+
+      <h2>Remplacements automatiques</h2>
+
+      <p class="muted">
+        Les remplacements sont recherchés
+        automatiquement selon les disponibilités
+        et la charge opérationnelle.
+      </p>
+
+    </div>
+
+    <div class="card"
+      style="border-left:5px solid
+      ${vacant.length?'#b91c1c':'#15803d'}">
+
+      <h2>⚠ Postes vacants (${vacant.length})</h2>
+
+      ${vacant.length
+
+        ? vacant.map(a=>{
+
+          const eligible = me.is_admin
+            ? candidates(a)
+            : [];
+
+          return `
+
+            <div class="item">
+
+              <strong>
+                ${dateFr(a.assignment_date)}
+              </strong>
+
+              <p>
+                Position ${a.position} :
+                aucun pompier affecté.
+              </p>
+
+              <p class="warning">
+                Potentiel incomplet
+              </p>
+
+              ${me.is_admin
+
+                ? eligible.length
+
+                  ? `<label>
+                      Attribution manuelle
+                     </label>
+
+                     <select
+                       id="candidate-${a.id}"
+                       style="width:100%;margin:8px 0">
+
+                       <option value="">
+                         Choisir un pompier
+                       </option>
+
+                       ${eligible.map(p=>`
+                         <option value="${p.id}">
+                           ${name(p.id)}
+                         </option>
+                       `).join('')}
+
+                     </select>
+
+                     <button
+                       class="primary"
+                       data-fill="${a.id}"
+                       style="width:100%">
+
+                       Attribuer le poste vacant
+
+                     </button>`
+
+                  : `<p class="muted">
+                       Aucun candidat éligible.
+                     </p>`
+
+                : ''
+              }
+
+            </div>`;
+
+        }).join('')
+
+        : '<p>Aucun poste vacant identifié dans les plannings publiés.</p>'
+      }
+
+    </div>
+
+    <div class="card">
+
+      <h2>Historique des remplacements</h2>
+
+      ${history.length
+
+        ? history.map(r=>{
+
+          const a = assignments.find(
+            x=>x.id===r.assignment_id
+          );
+
+          return `
+
+            <div class="item">
+
+              <strong>
+                ${a
+                  ? dateFr(a.assignment_date)
+                  : 'Créneau archivé'}
+              </strong>
+
+              <p>
+                Pompier remplacé :
+                ${r.requester
+                  ? name(r.requester)
+                  : 'Poste vacant'}
+              </p>
+
+              <p style="color:#15803d">
+                Pompier affecté :
+                ${r.volunteer
+                  ? name(r.volunteer)
+                  : 'Non renseigné'}
+              </p>
+
+              <span class="pill">
+                ✓ Affectation effectuée
+              </span>
+
+              <p class="muted">
+                ${new Date(
+                  r.created_at
+                ).toLocaleString('fr-FR',{
+                  timeZone:'Europe/Paris'
+                })}
+              </p>
+
+            </div>`;
+
+        }).join('')
+
+        : '<p>Aucun remplacement enregistré.</p>'
+      }
+
+    </div>`;
+
+  document.querySelectorAll('[data-fill]')
+    .forEach(b=>{
+
+      b.onclick=()=>{
+
+        const assignmentId = b.dataset.fill;
+
+        const userId = $(
+          '#candidate-'+assignmentId
+        ).value;
+
+        if(!userId){
+
+          toast('Sélectionnez un pompier');
+          return;
+
+        }
+
+        if(!confirm(
+          'Confirmez-vous avoir vérifié la disponibilité réelle de ce pompier avant son affectation ?'
+        )) return;
+
+        b.disabled = true;
+
+        run(async()=>{
+
+          try{
+
+            const result = await query(
+              db.rpc('admin_fill_daily_vacancy',{
+                target_assignment:assignmentId,
+                target_user:userId
+              })
+            );
+
+            toast(result);
+
+          }finally{
+
+            b.disabled = false;
+
+          }
+
+        });
+
+      };
+
+    });
+
+}
+
 
 function drillParticipants(drillId,rsvps){
   const active=profiles.filter(p=>p.active);
@@ -278,7 +1333,840 @@ function drillParticipants(drillId,rsvps){
   `).join('');
 }
 
-async function drills(){const rows=await query(db.from('drills').select('*').gte('starts_at',new Date(Date.now()-86400000).toISOString()).order('starts_at'));const rsvps=await query(db.from('drill_rsvps').select('*'));$('#content').innerHTML=`<div class="card"><h2>Manœuvres</h2>${rows.length?rows.map(d=>`<div class="item"><h3>${escape(d.title)}</h3><p>${new Date(d.starts_at).toLocaleString('fr-FR')} • ${escape(d.details)}</p><p class="muted">Présents : ${rsvps.filter(x=>x.drill_id===d.id&&x.status==='yes').length} / ${profiles.filter(p=>p.active).length}</p>${drillParticipants(d.id,rsvps)}<div class="row">${[['yes','Présent'],['no','Absent'],['maybe','En attente']].map(([v,l])=>`<button data-drill="${d.id}" data-rsvp="${v}" class="${rsvps.find(x=>x.drill_id===d.id&&x.user_id===me.id)?.status===v?'selected':''}">${l}</button>`).join('')}</div></div>`).join(''):'<p>Aucune manœuvre programmée.</p>'}</div>${me.is_admin?`<div class="card"><h3>Créer une manœuvre</h3><label>Intitulé</label><input id="title"><label>Date et heure</label><input id="starts" type="datetime-local"><label>Précisions</label><textarea id="details"></textarea><p><button class="primary" id="addDrill">Créer</button></p></div>`:''}`;document.querySelectorAll('[data-drill]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.from('drill_rsvps').upsert({drill_id:b.dataset.drill,user_id:me.id,status:b.dataset.rsvp}));toast('Réponse enregistrée')}));if(me.is_admin)$('#addDrill').onclick=()=>run(async()=>{if(!$('#title').value||!$('#starts').value)throw Error('Intitulé et date requis');await query(db.from('drills').insert({title:$('#title').value,starts_at:new Date($('#starts').value).toISOString(),details:$('#details').value,created_by:me.id}));toast('Manœuvre créée')})}
-async function admin(){const w=monday(1);$('#content').innerHTML=`<div class="card"><h2>Administration</h2><p>Effectif actif : ${profiles.filter(p=>p.active).length} / 14 prévus</p><p><button class="primary" id="generate">Générer le planning de la semaine du ${dateFr(w)}</button></p><p class="muted">La génération planifiée du jeudi à 18 h nécessite l'activation de pg_cron (voir README).</p></div><div class="card"><h3>Comptes et coordonnées</h3>${profiles.map(p=>`<div class="item"><strong>${name(p.id)}</strong><div class="grid"><div><label>Prénom</label><input data-first="${p.id}" value="${escape(p.first_name)}"></div><div><label>Nom</label><input data-last="${p.id}" value="${escape(p.last_name)}"></div><div><label>Téléphone</label><input data-phone="${p.id}" value="${escape(p.phone)}"></div></div><div class="row"><label><input type="checkbox" data-active="${p.id}" ${p.active?'checked':''}> Actif</label><label><input type="checkbox" data-admin="${p.id}" ${p.is_admin?'checked':''}> Admin</label><button data-save="${p.id}">Enregistrer</button></div></div>`).join('')}</div>`;$('#generate').onclick=()=>run(async()=>{toast(await query(db.rpc('generate_next_week')))});document.querySelectorAll('[data-save]').forEach(b=>b.onclick=()=>run(async()=>{const id=b.dataset.save;const val=k=>document.querySelector(`[data-${k}="${id}"]`);if(id===me.id&&!val('admin').checked)throw Error('Ne retirez pas votre propre accès administrateur');await query(db.from('profiles').update({first_name:val('first').value,last_name:val('last').value,phone:val('phone').value,active:val('active').checked,is_admin:val('admin').checked}).eq('id',id));toast('Compte mis à jour')}))}
+
+
+function eventDocumentsPanel(drillId,documents){
+  const files=documents.filter(
+    d=>d.drill_id===drillId
+  );
+
+  return `
+    <div style="margin:15px 0;padding:12px;
+      background:#f2f5f3;border-radius:8px">
+
+      <h3>📚 Documents supports (${files.length})</h3>
+
+      ${files.length?files.map(f=>`
+        <div class="item">
+
+          <strong>📄 ${escape(f.file_name)}</strong>
+
+          <p class="muted">
+            ${(f.file_size/1024/1024).toFixed(2)} Mo
+          </p>
+
+          <div class="row">
+            <button data-open-document="${f.id}">
+              Consulter
+            </button>
+
+            <button data-download-document="${f.id}">
+              Télécharger
+            </button>
+
+            ${me.is_admin?`
+              <button class="red"
+                data-delete-document="${f.id}">
+                Supprimer
+              </button>`:''}
+          </div>
+
+        </div>
+      `).join(''):
+        '<p class="muted">Aucun document associé.</p>'}
+
+      ${me.is_admin?`
+        <div style="margin-top:12px">
+
+          <label>Ajouter des documents PDF</label>
+
+          <input type="file"
+            id="pdf-${drillId}"
+            accept=".pdf,application/pdf"
+            multiple>
+
+          <p class="muted">
+            10 Mo maximum par fichier.
+          </p>
+
+          <button class="primary"
+            data-upload-document="${drillId}">
+            Ajouter les PDF
+          </button>
+
+        </div>`:''}
+
+    </div>`;
+}
+
+async function drills(){
+  const rows=await query(
+    db.from('drills').select('*')
+      .gte('starts_at',new Date(Date.now()-86400000).toISOString())
+      .order('starts_at')
+  );
+
+  const rsvps=await allRows(()=>
+    db.from('drill_rsvps').select('*').order('drill_id').order('user_id')
+  );
+
+  
+  let documents=[];
+  let documentsError=false;
+
+  try{
+    documents=await allRows(()=>
+      db.from('event_documents')
+        .select('*')
+        .order('created_at').order('id')
+    );
+  }catch(e){
+    console.error(e);
+    documentsError=true;
+  }
+
+  if(tab!=='drills')return;
+
+
+  $('#content').innerHTML=`
+    <div class="card">
+      <h2>Manœuvres et cérémonies</h2>
+
+      <label>Filtrer les événements</label>
+      <select id="eventFilter">
+        <option value="all">Tous les événements</option>
+        <option value="manoeuvre">Manœuvres</option>
+        <option value="ceremonie">Cérémonies</option>
+      </select>
+
+      ${rows.length?rows.map(d=>`
+        <div class="item" data-event-type="${d.event_type}">
+
+          <p style="color:${d.event_type==='ceremonie'
+            ?'#254c88':'#16634f'}">
+            <strong>
+              ${d.event_type==='ceremonie'
+                ?'🇫🇷 CÉRÉMONIE':'🚒 MANŒUVRE'}
+            </strong>
+          </p>
+
+          <h3>${escape(d.title)}</h3>
+
+          ${d.cancelled_at?`
+            <p style="color:#b91c1c">
+              <strong>ÉVÉNEMENT ANNULÉ</strong>
+            </p>`:''}
+
+          <p>📅 ${new Date(d.starts_at)
+            .toLocaleString('fr-FR',{
+              timeZone:'Europe/Paris'
+            })}</p>
+
+          ${d.location?`
+            <p>📍 ${escape(d.location)}</p>`:''}
+
+          ${d.dress_code?`
+            <p>👕 ${escape(d.dress_code)}</p>`:''}
+
+          <p>${escape(d.details||'')}</p>
+
+          
+${drillParticipants(d.id,rsvps)}
+
+${documentsError
+  ?'<p class="warning">Documents momentanément inaccessibles.</p>'
+  :eventDocumentsPanel(d.id,documents)}
+
+
+          ${!d.cancelled_at?`
+            <div class="row">
+              ${[
+                ['yes','Présent'],
+                ['no','Absent'],
+                ['maybe','En attente']
+              ].map(([v,l])=>`
+                <button
+                  data-drill="${d.id}"
+                  data-rsvp="${v}"
+                  class="${rsvps.find(x=>
+                    x.drill_id===d.id &&
+                    x.user_id===me.id
+                  )?.status===v?'selected':''}">
+                  ${l}
+                </button>
+              `).join('')}
+            </div>`:''}
+
+          ${me.is_admin?`
+            <p>
+              <button data-edit-event="${d.id}">
+                Modifier
+              </button>
+              <button class="red"
+                data-cancel-event="${d.id}">
+                ${d.cancelled_at?'Rétablir':'Annuler'}
+              </button>
+            </p>`:''}
+
+        </div>
+      `).join(''):
+        '<p>Aucun événement programmé.</p>'}
+    </div>
+
+    ${me.is_admin?`
+      <div class="card">
+        <h3 id="eventFormTitle">Créer un événement</h3>
+
+        <input id="eventId" type="hidden">
+
+        <label>Type d'événement</label>
+        <select id="eventType">
+          <option value="manoeuvre">Manœuvre</option>
+          <option value="ceremonie">Cérémonie</option>
+        </select>
+
+        <label>Intitulé</label>
+        <input id="title">
+
+        <label>Date et heure</label>
+        <input id="starts" type="datetime-local">
+
+        <label>Lieu de rassemblement</label>
+        <input id="eventLocation">
+
+        <label>Tenue demandée</label>
+        <input id="dressCode">
+
+        <label>Précisions</label>
+        <textarea id="details"></textarea>
+
+        <p>
+          <button class="primary" id="addDrill">
+            Enregistrer
+          </button>
+        </p>
+      </div>`:''}
+  `;
+
+  $('#eventFilter').onchange=()=>{
+    const filter=$('#eventFilter').value;
+
+    document.querySelectorAll('[data-event-type]')
+      .forEach(el=>{
+        el.style.display=
+          filter==='all' ||
+          el.dataset.eventType===filter?'':'none';
+      });
+  };
+
+  document.querySelectorAll('[data-drill]')
+    .forEach(b=>b.onclick=()=>run(async()=>{
+      await query(
+        db.from('drill_rsvps').upsert({
+          drill_id:b.dataset.drill,
+          user_id:me.id,
+          status:b.dataset.rsvp
+        })
+      );
+      toast('Réponse enregistrée');
+    }));
+
+  
+  document.querySelectorAll('[data-open-document]')
+    .forEach(b=>b.onclick=async()=>{
+      const f=documents.find(
+        x=>x.id===b.dataset.openDocument
+      );
+
+      if(!f)return;
+
+      const viewer=window.open('about:blank','_blank');
+
+      if(!viewer){
+        toast('Autorisez les fenêtres contextuelles');
+        return;
+      }
+
+      viewer.opener=null;
+
+      try{
+        const data=await query(
+          db.storage.from('event-documents')
+            .createSignedUrl(f.storage_path,300)
+        );
+
+        viewer.location.href=data.signedUrl;
+
+      }catch(e){
+        viewer.close();
+        toast(e.message||'Impossible de consulter le PDF');
+      }
+    });
+
+  document.querySelectorAll('[data-download-document]')
+    .forEach(b=>b.onclick=async()=>{
+      b.disabled=true;
+
+      try{
+        const f=documents.find(
+          x=>x.id===b.dataset.downloadDocument
+        );
+
+        if(!f)return;
+
+        const data=await query(
+          db.storage.from('event-documents')
+            .createSignedUrl(f.storage_path,300,{
+              download:f.file_name
+            })
+        );
+
+        const link=document.createElement('a');
+        link.href=data.signedUrl;
+        link.download=f.file_name;
+
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+      }catch(e){
+        toast(e.message||'Téléchargement impossible');
+      }finally{
+        b.disabled=false;
+      }
+    });
+
+if(!me.is_admin)return;
+  document.querySelectorAll('[data-delete-document]')
+    .forEach(b=>b.onclick=()=>{
+      const f=documents.find(
+        x=>x.id===b.dataset.deleteDocument
+      );
+
+      if(!f)return;
+
+      if(!confirm(
+        'Supprimer définitivement le document : '+f.file_name+' ?'
+      )){
+        return;
+      }
+
+      b.disabled=true;
+
+      run(async()=>{
+        try{
+          await query(
+            db.storage.from('event-documents')
+              .remove([f.storage_path])
+          );
+
+          await query(
+            db.from('event_documents')
+              .delete()
+              .eq('id',f.id)
+          );
+
+          toast('Document supprimé');
+
+        }finally{
+          b.disabled=false;
+        }
+      });
+    });
+
+
+
+  
+  document.querySelectorAll('[data-upload-document]')
+    .forEach(b=>b.onclick=()=>{
+      const drillId=b.dataset.uploadDocument;
+      const input=document.getElementById('pdf-'+drillId);
+      const files=Array.from(input.files||[]);
+
+      if(!files.length){
+        toast('Sélectionnez au moins un PDF');
+        return;
+      }
+
+      for(const file of files){
+        if(!file.name.toLowerCase().endsWith('.pdf')){
+          toast('Seuls les fichiers PDF sont autorisés');
+          return;
+        }
+
+        if(file.size===0 || file.size>10485760){
+          toast('Taille de fichier non autorisée : '+file.name);
+          return;
+        }
+      }
+
+      b.disabled=true;
+
+      run(async()=>{
+        try{
+          for(const file of files){
+
+            const path=drillId+'/'+
+              crypto.randomUUID()+'.pdf';
+
+            await query(
+              db.storage.from('event-documents')
+                .upload(path,file,{
+                  contentType:'application/pdf',
+                  upsert:false
+                })
+            );
+
+            try{
+              await query(
+                db.from('event_documents').insert({
+                  drill_id:drillId,
+                  file_name:file.name,
+                  storage_path:path,
+                  file_size:file.size,
+                  uploaded_by:me.id
+                })
+              );
+            }catch(e){
+              const cleanup=await db.storage
+                .from('event-documents')
+                .remove([path]);
+
+              if(cleanup.error){
+                console.error(cleanup.error);
+              }
+
+              throw e;
+            }
+          }
+
+          toast(files.length+' PDF ajouté(s)');
+        }finally{
+          b.disabled=false;
+        }
+      });
+    });
+
+$('#addDrill').onclick=()=>run(async()=>{
+    if(!$('#title').value.trim()||!$('#starts').value){
+      throw Error('Intitulé et date requis');
+    }
+
+    const payload={
+      event_type:$('#eventType').value,
+      title:$('#title').value.trim(),
+      starts_at:new Date($('#starts').value).toISOString(),
+      location:$('#eventLocation').value,
+      dress_code:$('#dressCode').value,
+      details:$('#details').value
+    };
+
+    const id=$('#eventId').value;
+
+    if(id){
+      await query(
+        db.from('drills').update(payload).eq('id',id)
+      );
+      toast('Événement modifié');
+    }else{
+      await query(
+        db.from('drills').insert({
+          ...payload,
+          created_by:me.id
+        })
+      );
+      toast('Événement créé');
+    }
+  });
+
+  document.querySelectorAll('[data-edit-event]')
+    .forEach(b=>b.onclick=()=>{
+      const d=rows.find(
+        x=>x.id===b.dataset.editEvent
+      );
+
+      if(!d)return;
+
+      $('#eventId').value=d.id;
+      $('#eventType').value=d.event_type;
+      $('#title').value=d.title;
+
+      const dt=new Date(d.starts_at);
+      $('#starts').value=new Date(
+        dt.getTime()-dt.getTimezoneOffset()*60000
+      ).toISOString().slice(0,16);
+
+      $('#eventLocation').value=d.location||'';
+      $('#dressCode').value=d.dress_code||'';
+      $('#details').value=d.details||'';
+
+      $('#eventFormTitle').textContent=
+        'Modifier un événement';
+
+      $('#eventFormTitle').scrollIntoView({
+        behavior:'smooth'
+      });
+    });
+
+  document.querySelectorAll('[data-cancel-event]')
+    .forEach(b=>b.onclick=()=>{
+      const d=rows.find(
+        x=>x.id===b.dataset.cancelEvent
+      );
+
+      if(!d)return;
+
+      if(!confirm(d.cancelled_at
+        ?'Rétablir cet événement ?'
+        :'Confirmer l’annulation de cet événement ?')){
+        return;
+      }
+
+      run(async()=>{
+        await query(
+          db.from('drills').update({
+            cancelled_at:d.cancelled_at
+              ?null:new Date().toISOString()
+          }).eq('id',d.id)
+        );
+
+        toast(d.cancelled_at
+          ?'Événement rétabli'
+          :'Événement annulé');
+      });
+    });
+}
+
+async function admin(){
+
+  const w = monday(1);
+
+  const end = new Date(w+'T12:00:00');
+  end.setDate(end.getDate()+6);
+
+  const last =
+    `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
+
+  const active = profiles.filter(p=>p.active);
+
+  const admins = active.filter(p=>p.is_admin);
+
+  const assignments = await query(
+    db.from('daily_assignments')
+      .select('*')
+      .gte('assignment_date',w)
+      .lte('assignment_date',last)
+  );
+
+  const filled = assignments.filter(a=>
+    a.user_id &&
+    active.some(p=>p.id===a.user_id)
+  ).length;
+
+  const vacant = assignments.length-filled;
+
+  const absences = await query(
+    db.from('daily_unavailability')
+      .select('*')
+      .gte('unavailable_date',w)
+      .lte('unavailable_date',last)
+      .order('unavailable_date')
+  );
+
+  const coverage = Math.round(
+    filled/14*100
+  );
+
+  if(tab!=='admin') return;
+
+  $('#content').innerHTML = `
+
+    <div class="card">
+
+      <h2>Administration</h2>
+
+      <div style="
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+        margin:15px 0">
+
+        <div class="item"
+          style="text-align:center">
+
+          <strong style="
+            font-size:30px;
+            color:#15803d">
+            ${active.length}/14
+          </strong>
+
+          <p>Pompiers actifs</p>
+
+        </div>
+
+        <div class="item"
+          style="text-align:center">
+
+          <strong style="font-size:30px">
+            ${admins.length}
+          </strong>
+
+          <p>Administrateurs actifs</p>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="card">
+
+      <h2>Planning de la semaine prochaine</h2>
+
+      <p>
+        Du ${dateFr(w)}
+        au ${dateFr(last)}
+      </p>
+
+      <div style="
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px">
+
+        <div class="item"
+          style="text-align:center">
+
+          <strong style="
+            font-size:30px;
+            color:#15803d">
+            ${filled}/14
+          </strong>
+
+          <p>Postes pourvus</p>
+
+        </div>
+
+        <div class="item"
+          style="text-align:center">
+
+          <strong style="
+            font-size:30px;
+            color:${vacant?'#b91c1c':'#15803d'}">
+            ${assignments.length?vacant:'—'}
+          </strong>
+
+          <p>Postes vacants</p>
+
+        </div>
+
+      </div>
+
+      ${assignments.length===14
+
+        ? `<p>
+            <strong>
+              Taux de couverture : ${coverage} %
+            </strong>
+           </p>
+
+           <div style="
+             height:12px;
+             background:#e2e8f0;
+             border-radius:8px;
+             overflow:hidden">
+
+             <div style="
+               height:100%;
+               width:${coverage}%;
+               background:${coverage===100
+                 ?'#15803d'
+                 :'#b7791f'}">
+             </div>
+
+           </div>`
+
+        : assignments.length
+
+          ? '<p class="warning">Planning incomplet : vérification nécessaire.</p>'
+
+          : '<p class="muted">Planning non publié.</p>'
+      }
+
+      <p>
+
+        <button
+          class="primary"
+          id="generate"
+          style="width:100%"
+          ${assignments.length?'disabled':''}>
+
+          Générer le planning journalier
+
+        </button>
+
+      </p>
+
+      <p class="muted">
+        Génération automatique prévue
+        chaque jeudi à 18 h.
+      </p>
+
+    </div>
+
+    <div class="card">
+
+      <h2>
+        Indisponibilités déclarées
+        (${absences.length})
+      </h2>
+
+      <p class="muted">
+        Semaine prochaine
+      </p>
+
+      ${absences.length
+
+        ? absences.map(a=>`
+
+          <div class="item">
+
+            <strong>
+              ${name(a.user_id)}
+            </strong>
+
+            <p style="color:#b91c1c">
+              ${dateFr(a.unavailable_date)}
+            </p>
+
+          </div>
+
+        `).join('')
+
+        : '<p>Aucune indisponibilité déclarée.</p>'
+      }
+
+    </div>
+
+    <div class="card">
+
+      <h2>Comptes et coordonnées</h2>
+
+      ${profiles.map(p=>`
+
+        <div class="item">
+
+          <strong>${name(p.id)}</strong>
+
+          <div class="grid">
+
+            <div>
+              <label>Prénom</label>
+              <input
+                data-first="${p.id}"
+                value="${escape(p.first_name)}">
+            </div>
+
+            <div>
+              <label>Nom</label>
+              <input
+                data-last="${p.id}"
+                value="${escape(p.last_name)}">
+            </div>
+
+            <div>
+              <label>Téléphone</label>
+              <input
+                data-phone="${p.id}"
+                value="${escape(p.phone||'')}">
+            </div>
+
+          </div>
+
+          <div class="row">
+
+            <label>
+              <input
+                type="checkbox"
+                data-active="${p.id}"
+                ${p.active?'checked':''}>
+              Actif
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                data-admin="${p.id}"
+                ${p.is_admin?'checked':''}>
+              Admin
+            </label>
+
+            <button data-save="${p.id}">
+              Enregistrer
+            </button>
+
+          </div>
+
+        </div>
+
+      `).join('')}
+
+    </div>`;
+
+  $('#generate').onclick=()=>{
+
+    if(!confirm(
+      'Générer le planning journalier de la semaine prochaine ?'
+    )) return;
+
+    run(async()=>{
+
+      const result = await query(
+        db.rpc('generate_next_daily_week')
+      );
+
+      toast(result);
+
+    });
+  };
+
+  document.querySelectorAll('[data-save]')
+    .forEach(b=>{
+
+      b.onclick=()=>run(async()=>{
+
+        const id = b.dataset.save;
+
+        const val = k=>
+          document.querySelector(
+            `[data-${k}="${id}"]`
+          );
+
+        if(id===me.id &&
+          (!val('admin').checked ||
+           !val('active').checked)){
+
+          throw Error(
+            'Vous ne pouvez pas désactiver votre propre accès administrateur'
+          );
+
+        }
+
+        await query(
+          db.from('profiles')
+            .update({
+              first_name:val('first').value,
+              last_name:val('last').value,
+              phone:val('phone').value,
+              active:val('active').checked,
+              is_admin:val('admin').checked
+            })
+            .eq('id',id)
+        );
+
+        toast('Compte mis à jour');
+
+      });
+    });
+}
 init().catch(e=>{app.innerHTML=`<div class="card error">Erreur de connexion : ${escape(e.message)}<p><button id="reset">Reconfigurer</button></p></div>`;$('#reset').onclick=()=>{localStorage.removeItem('leyment-config');location.reload()}});
 </script></body></html>
