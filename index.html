@@ -13,8 +13,74 @@ const name=id=>{let p=profiles.find(x=>x.id===id);return p?escape(p.first_name+'
 const run=async(fn)=>{try{await fn();await render()}catch(e){toast(e.message||'Erreur')}};
 const query=async(q)=>{const {data,error}=await q;if(error)throw error;return data};
 function configView(){app.innerHTML=`<div class="card"><h2>Connexion au serveur</h2><p>Renseigner les informations publiques de votre projet Supabase. La clé « service_role » ne doit jamais être saisie ici.</p><label>URL Supabase</label><input id="url" placeholder="https://xxxx.supabase.co" value="${escape(cfg?.url||'')}"><label>Clé publique anon / publishable</label><input id="key" placeholder="sb_publishable_..." value="${escape(cfg?.key||'')}"><p><button class="primary" id="save">Enregistrer</button></p><p class="muted">Le schéma SQL et les étapes de déploiement sont dans le fichier README.</p></div>`;$('#save').onclick=()=>{const url=$('#url').value.trim(),key=$('#key').value.trim();if(!/^https:\/\//.test(url)||!key)return toast('URL HTTPS et clé publique requises');localStorage.setItem('leyment-config',JSON.stringify({url,key}));location.reload()}}
-async function init(){if(!cfg){configView();return}db=createClient(cfg.url,cfg.key);const {data:{session}}=await db.auth.getSession();if(!session){authView();return}me=(await query(db.from('profiles').select('*').eq('id',session.user.id))).at(0);if(!me?.active){app.innerHTML=`<div class="card"><h2>Compte en attente d'activation</h2><p>Un administrateur doit activer ce compte.</p><button id="logout">Se déconnecter</button></div>`;$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());return}await render();setInterval(async()=>{try{await alerts()}catch(e){}},45000)}
-function authView(){app.innerHTML=`<div class="card"><h2>Connexion</h2><label>Adresse e-mail</label><input id="email" type="email"><label>Mot de passe</label><input id="password" type="password"><div class="row" style="margin-top:12px"><button class="primary" id="login">Connexion</button><button id="register">Créer un compte</button></div><div id="registerFields" style="display:none"><label>Prénom</label><input id="first"><label>Nom</label><input id="last"><label>Téléphone</label><input id="phone" type="tel"><button id="submitRegister" class="primary">Demander un accès</button></div><p class="muted">L'administrateur doit activer les nouveaux comptes. Les coordonnées ne sont pas publiques.</p></div>`;$('#login').onclick=()=>run(async()=>{await query(db.auth.signInWithPassword({email:$('#email').value,password:$('#password').value}));location.reload()});$('#register').onclick=()=>$('#registerFields').style.display='block';$('#submitRegister').onclick=()=>run(async()=>{await query(db.auth.signUp({email:$('#email').value,password:$('#password').value,options:{data:{first_name:$('#first').value,last_name:$('#last').value,phone:$('#phone').value}}}));toast('Inscription envoyée : vérifiez votre e-mail, puis attendez l’activation')})}
+async function init(){if(!cfg){configView();return}
+const isRecovery =
+  new URLSearchParams(location.hash.slice(1))
+    .get('type') === 'recovery';
+
+db=createClient(cfg.url,cfg.key);
+
+if(isRecovery){
+  const {data,error}=await db.auth.getSession();
+  if(error||!data.session){
+    authView();
+    toast('Lien invalide ou expiré. Demandez un nouveau lien.');
+    return;
+  }
+  recoveryView();
+  return;
+}
+const {data:{session}}=await db.auth.getSession();if(!session){authView();return}me=(await query(db.from('profiles').select('*').eq('id',session.user.id))).at(0);if(!me?.active){app.innerHTML=`<div class="card"><h2>Compte en attente d'activation</h2><p>Un administrateur doit activer ce compte.</p><button id="logout">Se déconnecter</button></div>`;$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());return}await render();setInterval(async()=>{try{await alerts()}catch(e){}},45000)}
+function authView(){app.innerHTML=`<div class="card"><h2>Connexion</h2><label>Adresse e-mail</label><input id="email" type="email"><label>Mot de passe</label><input id="password" type="password"><div class="row" style="margin-top:12px"><button class="primary" id="login">Connexion</button><button id="register">Créer un compte</button><button id="forgot">Mot de passe oublié ?</button></div><div id="registerFields" style="display:none"><label>Prénom</label><input id="first"><label>Nom</label><input id="last"><label>Téléphone</label><input id="phone" type="tel"><button id="submitRegister" class="primary">Demander un accès</button></div><p class="muted">L'administrateur doit activer les nouveaux comptes. Les coordonnées ne sont pas publiques.</p></div>`;$('#login').onclick=()=>run(async()=>{await query(db.auth.signInWithPassword({email:$('#email').value,password:$('#password').value}));location.reload()});
+$('#forgot').onclick=async()=>{
+  const email=$('#email').value.trim();
+  if(!email)return toast('Renseignez votre adresse e-mail');
+  try{
+    await query(db.auth.resetPasswordForEmail(email,{
+      redirectTo:'https://loiccoudrin-ai.github.io/dispo-sp-leyment/'
+    }));
+    toast('Si le compte existe, un e-mail de réinitialisation sera envoyé.');
+  }catch(e){
+    toast(e.message||'Erreur de réinitialisation');
+  }
+};
+$('#register').onclick=()=>$('#registerFields').style.display='block';$('#submitRegister').onclick=()=>run(async()=>{await query(db.auth.signUp({email:$('#email').value,password:$('#password').value,options:{data:{first_name:$('#first').value,last_name:$('#last').value,phone:$('#phone').value}}}));toast('Inscription envoyée : vérifiez votre e-mail, puis attendez l’activation')})}
+
+function recoveryView(){
+  app.innerHTML=`
+    <div class="card">
+      <h2>Nouveau mot de passe</h2>
+      <p>Choisissez votre nouveau mot de passe.</p>
+      <label>Nouveau mot de passe</label>
+      <input id="newPassword" type="password"
+        autocomplete="new-password">
+      <label>Confirmer le mot de passe</label>
+      <input id="confirmPassword" type="password"
+        autocomplete="new-password">
+      <p><button class="primary" id="savePassword">
+        Enregistrer le mot de passe
+      </button></p>
+    </div>`;
+  $('#savePassword').onclick=async()=>{
+    const p=$('#newPassword').value;
+    const c=$('#confirmPassword').value;
+    if(p.length<8)
+      return toast('8 caractères minimum');
+    if(p!==c)
+      return toast('Les mots de passe sont différents');
+    try{
+      await query(db.auth.updateUser({password:p}));
+      await query(db.auth.signOut());
+      alert('Mot de passe modifié avec succès');
+      location.replace(
+        'https://loiccoudrin-ai.github.io/dispo-sp-leyment/'
+      );
+    }catch(e){
+      toast(e.message||'Erreur de modification');
+    }
+  };
+}
+
 async function alerts(){const rows=await query(db.from('notices').select('*').order('created_at',{ascending:false}).limit(1));if(rows.length&&seenNotice&&rows[0].id!==seenNotice){toast(rows[0].title+' : '+rows[0].body);if(Notification.permission==='granted')new Notification(rows[0].title,{body:rows[0].body})}if(rows.length)seenNotice=rows[0].id}
 async function render(){profiles=await query(db.from('profiles').select('*').order('last_name'));const tabs=[['planning','Planning'],['availability','Mes disponibilités'],['replacement','Remplacements'],['drills','Manœuvres'],['admin','Administration']].filter(x=>x[0]!=='admin'||me.is_admin);app.innerHTML=`<div class="card row between"><div><strong>${escape(me.first_name+' '+me.last_name)}</strong><div class="muted">${me.is_admin?'Administrateur':'Sapeur-pompier'}</div></div><div class="row"><button id="notify">🔔 Notifications</button><button id="logout">Déconnexion</button></div></div><nav class="tabs">${tabs.map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'selected':''}">${label}</button>`).join('')}</nav><section id="content"></section><p class="muted">Application d'organisation interne : ne remplace pas l'alerte officielle du SDIS.</p>`;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());$('#notify').onclick=async()=>{if(!('Notification'in window))return toast('Notifications non disponibles dans ce navigateur');toast('Autorisation : '+await Notification.requestPermission()+' — uniquement lorsque l’application est ouverte')};if(tab==='planning')await planning();if(tab==='availability')await availability();if(tab==='replacement')await replacements();if(tab==='drills')await drills();if(tab==='admin')await admin();await alerts()}
 async function planning(){const w=monday(weekOffset),rows=await query(db.from('assignments').select('*').eq('week_start',w).order('slot'));$('#content').innerHTML=`<div class="card"><div class="row between"><h2>Semaine du ${dateFr(w)}</h2><div><button id="prev">◀</button><button id="next">▶</button></div></div>${['nights','weekend'].map(slot=>{let a=rows.filter(r=>r.slot===slot);return `<div class="card"><h3>${slot==='nights'?'🌙 Nuits de semaine':'☀️ Week-end'}</h3><p class="muted">${slot==='nights'?'Lundi 19 h – samedi 7 h':'Samedi 7 h – lundi 7 h'}</p>${a.length?a.map(r=>`<div class="item row between"><span>${r.user_id?name(r.user_id):'<strong>⚠ Poste vacant</strong>'}</span>${r.user_id===me.id?`<button class="red" data-decline="${r.id}">Indisponible</button>`:''}</div>`).join(''):'<p class="warning">Planning non publié</p>'}</div>`}).join('')}</div>`;$('#prev').onclick=()=>{weekOffset--;render()};$('#next').onclick=()=>{weekOffset++;render()};document.querySelectorAll('[data-decline]').forEach(b=>b.onclick=()=>{if(confirm('Demander votre remplacement pour toute cette période ?'))run(async()=>{await query(db.rpc('decline_assignment',{aid:b.dataset.decline}));toast('Demande de remplacement créée')})})}
