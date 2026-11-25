@@ -6,7 +6,10 @@
 import {createClient} from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 const $=s=>document.querySelector(s), escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const conf=window.localStorage.getItem('leyment-config');let cfg=conf?JSON.parse(conf):null,db=null,me=null,profiles=[],tab='planning',weekOffset=0,seenNotice=null;
-const toast=s=>{const m=$('#message');m.textContent=s;m.style.display='block';setTimeout(()=>m.style.display='none',5000)};
+const toast=s=>{const m=$('#message');m.textContent=s;m.style.display='block';
+clearTimeout(window.toastTimer);
+window.toastTimer=setTimeout(()=>m.style.display='none',15000)
+;
 const monday=(offset=0)=>{let d=new Date(),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+7*offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const dateFr=s=>new Date(s+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});
 const name=id=>{let p=profiles.find(x=>x.id===id);return p?escape(p.first_name+' '+p.last_name):'Poste vacant'};
@@ -30,7 +33,19 @@ if(isRecovery){
   recoveryView();
   return;
 }
-const {data:{session}}=await db.auth.getSession();if(!session){authView();return}me=(await query(db.from('profiles').select('*').eq('id',session.user.id))).at(0);if(!me?.active){app.innerHTML=`<div class="card"><h2>Compte en attente d'activation</h2><p>Un administrateur doit activer ce compte.</p><button id="logout">Se déconnecter</button></div>`;$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());return}await render();setInterval(async()=>{try{await alerts()}catch(e){}},45000)}
+const {data:{session}}=await db.auth.getSession();if(!session){authView();return}me=(await query(db.from('profiles').select('*').eq('id',session.user.id))).at(0);if(!me?.active){app.innerHTML=`<div class="card"><h2>Compte en attente d'activation</h2><p>Un administrateur doit activer ce compte.</p><button id="logout">Se déconnecter</button></div>`;$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());return}await render();
+setInterval(async()=>{
+  try{
+    await updateNoticeCount();
+    await alerts();
+    if(tab==='notifications'){
+      await notifications();
+    }
+  }catch(e){
+    console.error(e);
+  }
+},45000)
+}
 function authView(){app.innerHTML=`<div class="card"><h2>Connexion</h2><label>Adresse e-mail</label><input id="email" type="email"><label>Mot de passe</label><input id="password" type="password"><div class="row" style="margin-top:12px"><button class="primary" id="login">Connexion</button><button id="register">Créer un compte</button><button id="forgot">Mot de passe oublié ?</button></div><div id="registerFields" style="display:none"><label>Prénom</label><input id="first"><label>Nom</label><input id="last"><label>Téléphone</label><input id="phone" type="tel"><button id="submitRegister" class="primary">Demander un accès</button></div><p class="muted">L'administrateur doit activer les nouveaux comptes. Les coordonnées ne sont pas publiques.</p></div>`;$('#login').onclick=()=>run(async()=>{await query(db.auth.signInWithPassword({email:$('#email').value,password:$('#password').value}));location.reload()});
 $('#forgot').onclick=async()=>{
   const email=$('#email').value.trim();
@@ -81,12 +96,161 @@ function recoveryView(){
   };
 }
 
-async function alerts(){const rows=await query(db.from('notices').select('*').order('created_at',{ascending:false}).limit(1));if(rows.length&&seenNotice&&rows[0].id!==seenNotice){toast(rows[0].title+' : '+rows[0].body);if(Notification.permission==='granted')new Notification(rows[0].title,{body:rows[0].body})}if(rows.length)seenNotice=rows[0].id}
-async function render(){profiles=await query(db.from('profiles').select('*').order('last_name'));const tabs=[['planning','Planning'],['availability','Mes disponibilités'],['replacement','Remplacements'],['drills','Manœuvres'],['admin','Administration']].filter(x=>x[0]!=='admin'||me.is_admin);app.innerHTML=`<div class="card row between"><div><strong>${escape(me.first_name+' '+me.last_name)}</strong><div class="muted">${me.is_admin?'Administrateur':'Sapeur-pompier'}</div></div><div class="row"><button id="notify">🔔 Notifications</button><button id="logout">Déconnexion</button></div></div><nav class="tabs">${tabs.map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'selected':''}">${label}</button>`).join('')}</nav><section id="content"></section><p class="muted">Application d'organisation interne : ne remplace pas l'alerte officielle du SDIS.</p>`;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());$('#notify').onclick=async()=>{if(!('Notification'in window))return toast('Notifications non disponibles dans ce navigateur');toast('Autorisation : '+await Notification.requestPermission()+' — uniquement lorsque l’application est ouverte')};if(tab==='planning')await planning();if(tab==='availability')await availability();if(tab==='replacement')await replacements();if(tab==='drills')await drills();if(tab==='admin')await admin();await alerts()}
+
+async function notifications(){
+  const notices=await query(
+    db.from('notices').select('*')
+      .order('created_at',{ascending:false})
+  );
+
+  const acknowledgements=await query(
+    db.from('notice_acknowledgements')
+      .select('notice_id').eq('user_id',me.id)
+  );
+
+  const acknowledged=new Set(
+    acknowledgements.map(a=>a.notice_id)
+  );
+
+  const unread=notices.filter(
+    n=>!acknowledged.has(n.id)
+  );
+
+  $('#content').innerHTML=`
+    <div class="card">
+      <h2>🔔 Mes notifications</h2>
+      <p>${unread.length} notification(s) non acquittée(s)</p>
+      <button class="primary" id="ackAll"
+        ${unread.length?'':'disabled'}>
+        Tout acquitter
+      </button>
+      ${notices.length?notices.map(n=>`
+        <div class="item">
+          <strong>${escape(n.title)}</strong>
+          <p>${escape(n.body)}</p>
+          <p class="muted">
+            ${new Date(n.created_at).toLocaleString('fr-FR')}
+          </p>
+          ${acknowledged.has(n.id)
+            ?'<span class="pill">✓ Acquittée</span>'
+            :`<button class="primary" data-ack="${n.id}">
+                Acquitter
+              </button>`}
+        </div>
+      `).join(''):'<p>Aucune notification.</p>'}
+    </div>`;
+
+  async function acknowledge(ids){
+    try{
+      if(!ids.length)return;
+      await query(
+        db.from('notice_acknowledgements').upsert(
+          ids.map(id=>({
+            notice_id:id,
+            user_id:me.id
+          })),
+          {
+            onConflict:'notice_id,user_id',
+            ignoreDuplicates:true
+          }
+        )
+      );
+      await render();
+    }catch(e){
+      toast(e.message||'Erreur d’acquittement');
+    }
+  }
+
+  document.querySelectorAll('[data-ack]')
+    .forEach(b=>b.onclick=()=>
+      acknowledge([b.dataset.ack])
+    );
+
+  $('#ackAll').onclick=()=>
+    acknowledge(unread.map(n=>n.id));
+}
+
+
+async function updateNoticeCount(){
+  const notices=await query(
+    db.from('notices').select('id')
+  );
+
+  const acknowledgements=await query(
+    db.from('notice_acknowledgements')
+      .select('notice_id').eq('user_id',me.id)
+  );
+
+  const acknowledged=new Set(
+    acknowledgements.map(a=>a.notice_id)
+  );
+
+  const count=notices.filter(
+    n=>!acknowledged.has(n.id)
+  ).length;
+
+  const button=$('#notify');
+
+  if(button){
+    button.textContent=count
+      ?'🔔 Notifications ('+count+')'
+      :'🔔 Notifications';
+    button.style.background=count?'#a22e36':'';
+    button.style.color=count?'white':'';
+  }
+}
+
+async function alerts(){const rows=await query(db.from('notices').select('*').order('created_at',{ascending:false}).limit(1));if(rows.length&&seenNotice&&rows[0].id!==seenNotice){toast(rows[0].title+' : '+rows[0].body);if('Notification' in window && Notification.permission==='granted')new Notification(rows[0].title,{body:rows[0].body})}if(rows.length)seenNotice=rows[0].id}
+async function render(){profiles=await query(db.from('profiles').select('*').order('last_name'));const tabs=[['planning','Planning'],['availability','Mes disponibilités'],['replacement','Remplacements'],['drills','Manœuvres'],['admin','Administration']].filter(x=>x[0]!=='admin'||me.is_admin);app.innerHTML=`<div class="card row between"><div><strong>${escape(me.first_name+' '+me.last_name)}</strong><div class="muted">${me.is_admin?'Administrateur':'Sapeur-pompier'}</div></div><div class="row"><button id="notify">🔔 Notifications</button><button id="logout">Déconnexion</button></div></div><nav class="tabs">${tabs.map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'selected':''}">${label}</button>`).join('')}</nav><section id="content"></section><p class="muted">Application d'organisation interne : ne remplace pas l'alerte officielle du SDIS.</p>`;document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;render()});$('#logout').onclick=()=>db.auth.signOut().then(()=>location.reload());$('#notify').onclick=async()=>{if(!('Notification'in window))return toast('Notifications non disponibles dans ce navigateur');toast('Autorisation : '+await Notification.requestPermission()+' — uniquement lorsque l’application est ouverte')};if(tab==='planning')await planning();if(tab==='availability')await availability();if(tab==='replacement')await replacements();if(tab==='drills')await drills();if(tab==='admin')await admin();
+$('#notify').onclick=()=>{
+  tab='notifications';
+  render().catch(e=>toast(e.message));
+};
+if(tab==='notifications')await notifications();
+await updateNoticeCount();
+
+await alerts()}
 async function planning(){const w=monday(weekOffset),rows=await query(db.from('assignments').select('*').eq('week_start',w).order('slot'));$('#content').innerHTML=`<div class="card"><div class="row between"><h2>Semaine du ${dateFr(w)}</h2><div><button id="prev">◀</button><button id="next">▶</button></div></div>${['nights','weekend'].map(slot=>{let a=rows.filter(r=>r.slot===slot);return `<div class="card"><h3>${slot==='nights'?'🌙 Nuits de semaine':'☀️ Week-end'}</h3><p class="muted">${slot==='nights'?'Lundi 19 h – samedi 7 h':'Samedi 7 h – lundi 7 h'}</p>${a.length?a.map(r=>`<div class="item row between"><span>${r.user_id?name(r.user_id):'<strong>⚠ Poste vacant</strong>'}</span>${r.user_id===me.id?`<button class="red" data-decline="${r.id}">Indisponible</button>`:''}</div>`).join(''):'<p class="warning">Planning non publié</p>'}</div>`}).join('')}</div>`;$('#prev').onclick=()=>{weekOffset--;render()};$('#next').onclick=()=>{weekOffset++;render()};document.querySelectorAll('[data-decline]').forEach(b=>b.onclick=()=>{if(confirm('Demander votre remplacement pour toute cette période ?'))run(async()=>{await query(db.rpc('decline_assignment',{aid:b.dataset.decline}));toast('Demande de remplacement créée')})})}
 async function availability(){const w=monday(weekOffset),rows=await query(db.from('availability').select('*').eq('week_start',w).eq('user_id',me.id));$('#content').innerHTML=`<div class="card"><div class="row between"><h2>Mes disponibilités • ${dateFr(w)}</h2><div><button id="prev">◀</button><button id="next">▶</button></div></div><p class="muted">Déclarez-vous disponible avant le jeudi à 18 h pour la semaine suivante. « Non renseigné » ne permet pas une affectation automatique.</p>${['nights','weekend'].map(slot=>`<div class="item"><strong>${slot==='nights'?'5 nuits de semaine':'Week-end complet'}</strong><div class="row" style="margin-top:8px">${[['yes','Disponible'],['no','Indisponible'],['unknown','Non renseigné']].map(([v,l])=>`<button data-slot="${slot}" data-value="${v}" class="${(rows.find(r=>r.slot===slot)?.status||'unknown')===v?'selected':''}">${l}</button>`).join('')}</div></div>`).join('')}</div>`;$('#prev').onclick=()=>{weekOffset--;render()};$('#next').onclick=()=>{weekOffset++;render()};document.querySelectorAll('[data-slot]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.from('availability').upsert({user_id:me.id,week_start:w,slot:b.dataset.slot,status:b.dataset.value,updated_at:new Date().toISOString()}));toast('Disponibilité enregistrée')}))}
 async function replacements(){const rows=await query(db.from('replacements').select('*,assignments(week_start,slot,user_id)').in('status',['open','offered']).order('created_at',{ascending:false}));$('#content').innerHTML=`<div class="card"><h2>Remplacements à pourvoir</h2>${rows.length?rows.map(r=>`<div class="item"><strong>${r.assignments?.slot==='nights'?'Nuits':'Week-end'} • ${dateFr(r.assignments?.week_start)}</strong><p>Demandeur : ${name(r.requester)}</p><p class="muted">${r.status==='offered'?'Volontaire : '+name(r.volunteer):'En attente de volontaire'}</p><div class="row">${r.status==='open'&&r.requester!==me.id?`<button class="primary" data-offer="${r.id}">Je me propose</button>`:''}${me.is_admin&&r.status==='offered'?`<button class="primary" data-approve="${r.id}">Valider</button><button data-reject="${r.id}">Refuser</button>`:''}</div></div>`).join(''):'<p>Aucune demande en cours.</p>'}</div>`;document.querySelectorAll('[data-offer]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('offer_replacement',{rid:b.dataset.offer}));toast('Proposition transmise')}));document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('approve_replacement',{rid:b.dataset.approve,accept:true}));toast('Remplacement validé')}));document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.rpc('approve_replacement',{rid:b.dataset.reject,accept:false}));toast('Proposition refusée')}))}
-async function drills(){const rows=await query(db.from('drills').select('*').gte('starts_at',new Date(Date.now()-86400000).toISOString()).order('starts_at'));const rsvps=await query(db.from('drill_rsvps').select('*'));$('#content').innerHTML=`<div class="card"><h2>Manœuvres</h2>${rows.length?rows.map(d=>`<div class="item"><h3>${escape(d.title)}</h3><p>${new Date(d.starts_at).toLocaleString('fr-FR')} • ${escape(d.details)}</p><p class="muted">Présents : ${rsvps.filter(x=>x.drill_id===d.id&&x.status==='yes').length} / ${profiles.filter(p=>p.active).length}</p><div class="row">${[['yes','Présent'],['no','Absent'],['maybe','En attente']].map(([v,l])=>`<button data-drill="${d.id}" data-rsvp="${v}" class="${rsvps.find(x=>x.drill_id===d.id&&x.user_id===me.id)?.status===v?'selected':''}">${l}</button>`).join('')}</div></div>`).join(''):'<p>Aucune manœuvre programmée.</p>'}</div>${me.is_admin?`<div class="card"><h3>Créer une manœuvre</h3><label>Intitulé</label><input id="title"><label>Date et heure</label><input id="starts" type="datetime-local"><label>Précisions</label><textarea id="details"></textarea><p><button class="primary" id="addDrill">Créer</button></p></div>`:''}`;document.querySelectorAll('[data-drill]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.from('drill_rsvps').upsert({drill_id:b.dataset.drill,user_id:me.id,status:b.dataset.rsvp}));toast('Réponse enregistrée')}));if(me.is_admin)$('#addDrill').onclick=()=>run(async()=>{if(!$('#title').value||!$('#starts').value)throw Error('Intitulé et date requis');await query(db.from('drills').insert({title:$('#title').value,starts_at:new Date($('#starts').value).toISOString(),details:$('#details').value,created_by:me.id}));toast('Manœuvre créée')})}
+
+function drillParticipants(drillId,rsvps){
+  const active=profiles.filter(p=>p.active);
+
+  const status=p=>rsvps.find(
+    r=>r.drill_id===drillId && r.user_id===p.id
+  )?.status;
+
+  const groups=[
+    ['Présents','#16634f',
+      active.filter(p=>status(p)==='yes')],
+    ['Absents','#a22e36',
+      active.filter(p=>status(p)==='no')],
+    ['En attente','#b7791f',
+      active.filter(p=>status(p)==='maybe')],
+    ['Sans réponse','#63746b',
+      active.filter(p=>!status(p))]
+  ];
+
+  return groups.map(([label,color,people])=>`
+    <div style="margin:8px 0">
+      <strong style="color:${color}">
+        ${label} (${people.length})
+      </strong>
+      <div style="margin:5px 0">
+        ${people.length
+          ?people.map(p=>`
+            <span class="pill" style="margin:2px">
+              ${escape(p.first_name)}
+            </span>
+          `).join('')
+          :'<span class="muted">Personne</span>'}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function drills(){const rows=await query(db.from('drills').select('*').gte('starts_at',new Date(Date.now()-86400000).toISOString()).order('starts_at'));const rsvps=await query(db.from('drill_rsvps').select('*'));$('#content').innerHTML=`<div class="card"><h2>Manœuvres</h2>${rows.length?rows.map(d=>`<div class="item"><h3>${escape(d.title)}</h3><p>${new Date(d.starts_at).toLocaleString('fr-FR')} • ${escape(d.details)}</p><p class="muted">Présents : ${rsvps.filter(x=>x.drill_id===d.id&&x.status==='yes').length} / ${profiles.filter(p=>p.active).length}</p>${drillParticipants(d.id,rsvps)}<div class="row">${[['yes','Présent'],['no','Absent'],['maybe','En attente']].map(([v,l])=>`<button data-drill="${d.id}" data-rsvp="${v}" class="${rsvps.find(x=>x.drill_id===d.id&&x.user_id===me.id)?.status===v?'selected':''}">${l}</button>`).join('')}</div></div>`).join(''):'<p>Aucune manœuvre programmée.</p>'}</div>${me.is_admin?`<div class="card"><h3>Créer une manœuvre</h3><label>Intitulé</label><input id="title"><label>Date et heure</label><input id="starts" type="datetime-local"><label>Précisions</label><textarea id="details"></textarea><p><button class="primary" id="addDrill">Créer</button></p></div>`:''}`;document.querySelectorAll('[data-drill]').forEach(b=>b.onclick=()=>run(async()=>{await query(db.from('drill_rsvps').upsert({drill_id:b.dataset.drill,user_id:me.id,status:b.dataset.rsvp}));toast('Réponse enregistrée')}));if(me.is_admin)$('#addDrill').onclick=()=>run(async()=>{if(!$('#title').value||!$('#starts').value)throw Error('Intitulé et date requis');await query(db.from('drills').insert({title:$('#title').value,starts_at:new Date($('#starts').value).toISOString(),details:$('#details').value,created_by:me.id}));toast('Manœuvre créée')})}
 async function admin(){const w=monday(1);$('#content').innerHTML=`<div class="card"><h2>Administration</h2><p>Effectif actif : ${profiles.filter(p=>p.active).length} / 14 prévus</p><p><button class="primary" id="generate">Générer le planning de la semaine du ${dateFr(w)}</button></p><p class="muted">La génération planifiée du jeudi à 18 h nécessite l'activation de pg_cron (voir README).</p></div><div class="card"><h3>Comptes et coordonnées</h3>${profiles.map(p=>`<div class="item"><strong>${name(p.id)}</strong><div class="grid"><div><label>Prénom</label><input data-first="${p.id}" value="${escape(p.first_name)}"></div><div><label>Nom</label><input data-last="${p.id}" value="${escape(p.last_name)}"></div><div><label>Téléphone</label><input data-phone="${p.id}" value="${escape(p.phone)}"></div></div><div class="row"><label><input type="checkbox" data-active="${p.id}" ${p.active?'checked':''}> Actif</label><label><input type="checkbox" data-admin="${p.id}" ${p.is_admin?'checked':''}> Admin</label><button data-save="${p.id}">Enregistrer</button></div></div>`).join('')}</div>`;$('#generate').onclick=()=>run(async()=>{toast(await query(db.rpc('generate_next_week')))});document.querySelectorAll('[data-save]').forEach(b=>b.onclick=()=>run(async()=>{const id=b.dataset.save;const val=k=>document.querySelector(`[data-${k}="${id}"]`);if(id===me.id&&!val('admin').checked)throw Error('Ne retirez pas votre propre accès administrateur');await query(db.from('profiles').update({first_name:val('first').value,last_name:val('last').value,phone:val('phone').value,active:val('active').checked,is_admin:val('admin').checked}).eq('id',id));toast('Compte mis à jour')}))}
 init().catch(e=>{app.innerHTML=`<div class="card error">Erreur de connexion : ${escape(e.message)}<p><button id="reset">Reconfigurer</button></p></div>`;$('#reset').onclick=()=>{localStorage.removeItem('leyment-config');location.reload()}});
 </script></body></html>
